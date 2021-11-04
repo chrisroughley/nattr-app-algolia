@@ -1,5 +1,6 @@
 const functions = require("firebase-functions");
 const algoliasearch = require("algoliasearch/lite");
+const ogs = require("open-graph-scraper");
 
 const APP_ID = functions.config().algolia.app;
 const ADMIN_KEY = functions.config().algolia.key;
@@ -31,3 +32,15 @@ exports.deleteFromIndex = functions
   .onDelete((snapshot) => {
     return index.deleteObject(snapshot.id);
   });
+
+exports.getMetaData = functions.https.onRequest(async (req, res) => {
+  console.log("invocated");
+  const url = req.query.url;
+  if (url) {
+    const options = { url };
+    const data = await ogs(options);
+    res.send({ result: data.result });
+  } else {
+    res.send({ result: "no url" });
+  }
+});
