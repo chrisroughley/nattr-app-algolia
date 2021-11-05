@@ -1,6 +1,10 @@
 const functions = require("firebase-functions");
+const admin = require("firebase-admin");
 const algoliasearch = require("algoliasearch/lite");
-const ogs = require("open-graph-scraper");
+const getMetaData = require("metadata-scraper");
+
+admin.initializeApp();
+const db = admin.firestore();
 
 const APP_ID = functions.config().algolia.app;
 const ADMIN_KEY = functions.config().algolia.key;
@@ -33,14 +37,28 @@ exports.deleteFromIndex = functions
     return index.deleteObject(snapshot.id);
   });
 
-exports.getMetaData = functions.https.onRequest(async (req, res) => {
-  console.log("invocated");
-  const url = req.query.url;
-  if (url) {
-    const options = { url };
-    const data = await ogs(options);
-    res.send({ result: data.result });
-  } else {
-    res.send({ result: "no url" });
+exports.getMetaData = functions.https.onCall(
+  async ({ url, chatId, messageId }) => {
+    const getHostnameFromRegex = (url) => {
+      const matches = url.match(/^https?:\/\/(?:www.)?([^/?#]+)(?:[/?#]|$)/i);
+      const hostName = matches && matches[1];
+      return hostName;
+    };
+
+    if (url) {
+      const data = await getMetaData(url);
+      const urlMetaData = {
+        url: data.url,
+        image: data.image,
+        title: data.title,
+        hostName: getHostnameFromRegex(data.url),
+      };
+      await db
+        .doc(`chats/${chatId}/messages/${messageId}`)
+        .set({ urlMetaData }, { merge: true });
+      return urlMetaData;
+    } else {
+      return { result: "no url" };
+    }
   }
-});
+);
