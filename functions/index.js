@@ -47,15 +47,26 @@ exports.getMetaData = functions.https.onCall(
 
     if (url) {
       const data = await getMetaData(url);
+      let status = "";
+
+      if (data.url && data.image && data.title) {
+        status = "success";
+      } else {
+        status = "missingData";
+      }
+
       const urlMetaData = {
         url: data.url,
         image: data.image,
         title: data.title,
-        hostName: getHostnameFromRegex(data.url),
+        hostName: getHostnameFromRegex(url),
+        status,
       };
+
       await db
         .doc(`chats/${chatId}/messages/${messageId}`)
         .set({ urlMetaData }, { merge: true });
+
       return urlMetaData;
     } else {
       return { result: "no url" };
