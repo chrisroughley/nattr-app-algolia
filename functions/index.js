@@ -2,9 +2,10 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const algoliasearch = require("algoliasearch/lite");
 const getMetaData = require("metadata-scraper");
+require("firebase-functions/lib/logger/compat");
 
 admin.initializeApp();
-const db = admin.firestore();
+const firestore = admin.firestore();
 
 const APP_ID = functions.config().algolia.app;
 const ADMIN_KEY = functions.config().algolia.key;
@@ -37,8 +38,9 @@ exports.deleteFromIndex = functions
     return index.deleteObject(snapshot.id);
   });
 
-exports.getMetaData = functions.https.onCall(
-  async ({ url, chatId, messageId }) => {
+exports.getMetaData = functions
+  .region("europe-west2")
+  .https.onCall(async ({ url, chatId, messageId }) => {
     const getHostnameFromRegex = (url) => {
       const matches = url.match(/^https?:\/\/(?:www.)?([^/?#]+)(?:[/?#]|$)/i);
       const hostName = matches && matches[1];
@@ -63,7 +65,7 @@ exports.getMetaData = functions.https.onCall(
         status,
       };
 
-      await db
+      await firestore
         .doc(`chats/${chatId}/messages/${messageId}`)
         .set({ urlMetaData }, { merge: true });
 
@@ -71,5 +73,27 @@ exports.getMetaData = functions.https.onCall(
     } else {
       return { result: "no url" };
     }
-  }
-);
+  });
+
+exports.userStatusChanged = functions
+  .region("europe-west2")
+  .database.ref("status/{uid}")
+  .onUpdate(async (change, context) => {
+    const eventStatus = change.after.val();
+    const uid = context.params.uid;
+
+    const userStatusFirestoreRef = firestore.doc(`userStatus/${uid}`);
+
+    const statusSnapshot = await change.after.ref.once("value");
+    const status = statusSnapshot.val();
+
+    if (status.last_changed > eventStatus.last_changed) {
+      return null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(eventStatus, "connections")) {
+      return userStatusFirestoreRef.set({ status: "online" });
+    } else {
+      return userStatusFirestoreRef.set({ status: "offline" });
+    }
+  });
